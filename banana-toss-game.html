@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR Banana Toss Game</title>
+    <!-- Import A-Frame and AR.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.4.2/aframe.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ar.js/2.2.2/aframe-ar.js"></script>
+    <style>
+        .button-container {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            z-index: 999;
+        }
+        .toss-button {
+            background-color: #ffcc00;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 30px;
+            font-size: 20px;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        .score-display {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 10px;
+            font-family: Arial, sans-serif;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body style="margin: 0; overflow: hidden;">
+    <div class="score-display">Score: <span id="score">0</span></div>
+    <div class="button-container">
+        <button class="toss-button" id="tossButton">TOSS BANANA!</button>
+    </div>
+
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
+        <!-- Camera with user interaction -->
+        <a-entity camera look-controls></a-entity>
+        
+        <!-- Trash can model - position it in front of the camera -->
+        <a-cylinder id="trashCan" 
+                  position="0 0 -3" 
+                  radius="0.5" 
+                  height="1" 
+                  color="#333333"
+                  shadow>
+        </a-cylinder>
+        
+        <!-- Marker to position the trash can in AR space -->
+        <a-marker preset="hiro" id="mainMarker">
+            <a-cylinder position="0 0.5 0" 
+                      radius="0.5" 
+                      height="1" 
+                      color="#333333">
+            </a-cylinder>
+        </a-marker>
+    </a-scene>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            let score = 0;
+            const scoreDisplay = document.getElementById('score');
+            const tossButton = document.getElementById('tossButton');
+            const scene = document.querySelector('a-scene');
+            const camera = document.querySelector('[camera]');
+            const trashCan = document.getElementById('trashCan');
+            
+            // Function to create and toss a banana
+            function tossBanana() {
+                // Create banana entity
+                const banana = document.createElement('a-entity');
+                
+                // Simplified banana shape (yellow ellipsoid)
+                banana.setAttribute('geometry', {
+                    primitive: 'sphere',
+                    radius: 0.15,
+                    segmentsWidth: 8,
+                    segmentsHeight: 8
+                });
+                
+                banana.setAttribute('material', {
+                    color: '#FFFF00',
+                    roughness: 0.8
+                });
+                
+                // Set initial position (in front of camera)
+                const cameraPosition = camera.getAttribute('position');
+                const cameraRotation = camera.getAttribute('rotation');
+                
+                banana.setAttribute('position', {
+                    x: cameraPosition.x,
+                    y: cameraPosition.y - 0.2,
+                    z: cameraPosition.z - 0.5
+                });
+                
+                // Add physics
+                banana.setAttribute('dynamic-body', {
+                    shape: 'sphere',
+                    mass: 1,
+                    linearDamping: 0.2,
+                    angularDamping: 0.2
+                });
+                
+                // Add to scene
+                scene.appendChild(banana);
+                
+                // Apply force in the direction the camera is facing
+                const force = new THREE.Vector3(0, 0, -10);
+                force.applyAxisAngle(new THREE.Vector3(1, 0, 0), THREE.Math.degToRad(cameraRotation.x));
+                force.applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.Math.degToRad(cameraRotation.y));
+                
+                // Simplified physics: animate the banana's position
+                let time = 0;
+                let initialVelocity = {
+                    x: -force.x * 0.05,
+                    y: 2, // Initial upward velocity
+                    z: -force.z * 0.05
+                };
+                
+                // Animate the banana toss
+                const animate = setInterval(() => {
+                    time += 0.05;
+                    const gravity = 9.8;
+                    
+                    const currentPos = banana.getAttribute('position');
+                    
+                    // Update position using physics equations
+                    const newPos = {
+                        x: currentPos.x + initialVelocity.x,
+                        y: currentPos.y + (initialVelocity.y - (gravity * time) * 0.5),
+                        z: currentPos.z + initialVelocity.z
+                    };
+                    
+                    banana.setAttribute('position', newPos);
+                    
+                    // Rotate the banana as it flies
+                    const currentRotation = banana.getAttribute('rotation') || {x: 0, y: 0, z: 0};
+                    banana.setAttribute('rotation', {
+                        x: currentRotation.x + 10,
+                        y: currentRotation.y + 5,
+                        z: currentRotation.z + 15
+                    });
+                    
+                    // Check for collision with the trash can
+                    const trashCanPos = trashCan.getAttribute('position');
+                    const distance = Math.sqrt(
+                        Math.pow(newPos.x - trashCanPos.x, 2) +
+                        Math.pow(newPos.z - trashCanPos.z, 2)
+                    );
+                    
+                    // If banana is close to trash can horizontally and falling into it
+                    if (distance < 0.6 && 
+                        newPos.y < (trashCanPos.y + 0.5) && 
+                        newPos.y > (trashCanPos.y - 0.5) &&
+                        initialVelocity.y < 0) {
+                        
+                        // Success! Banana went in the trash can
+                        score += 10;
+                        scoreDisplay.textContent = score;
+                        
+                        // Create a success effect
+                        const successEffect = document.createElement('a-entity');
+                        successEffect.setAttribute('position', trashCanPos);
+                        successEffect.setAttribute('particle-system', {
+                            color: '#FFFF00',
+                            size: 0.2,
+                            maxAge: 1
+                        });
+                        scene.appendChild(successEffect);
+                        
+                        // Remove effect after 1 second
+                        setTimeout(() => {
+                            scene.removeChild(successEffect);
+                        }, 1000);
+                        
+                        // Remove the banana
+                        scene.removeChild(banana);
+                        clearInterval(animate);
+                    }
+                    
+                    // If banana hits the ground or goes too far
+                    if (newPos.y < -2 || newPos.z < -20) {
+                        scene.removeChild(banana);
+                        clearInterval(animate);
+                    }
+                }, 50);
+            }
+            
+            // Add toss button click event
+            tossButton.addEventListener('click', tossBanana);
+        });
+    </script>
+</body>
+</html>
